@@ -13,7 +13,7 @@
 // └──────────────────────────────────────────────────┘
 const CONFIG = {
   // Your Gemini API key (get one at https://aistudio.google.com/apikey)
-  GEMINI_API_KEY: "YOUR_GEMINI_API_KEY_HERE",
+  GEMINI_API_KEY: "AIzaSyAn9-0Q8kgrq4Bv5rnsqkk1EaO_9Kf0v8c",
 
   // Gemini model to use
   GEMINI_MODEL: "gemini-2.5-pro",
