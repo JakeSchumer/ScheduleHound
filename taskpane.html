@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScheduleHound</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="taskpane.css">
+
+  <!-- Office.js — MUST load before our script -->
+  <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
+</head>
+<body>
+<div class="taskpane">
+
+  <!-- ═══════ BRAND ═══════ -->
+  <div class="brand">
+    <div class="brand-icon">🐕</div>
+    <div class="brand-text">
+      <h1>ScheduleHound</h1>
+      <p>Court Deadline Extractor</p>
+    </div>
+  </div>
+
+  <!-- ═══════ AUTH BANNER (shows if Graph API auth needed) ═══════ -->
+  <div class="auth-banner" id="authBanner">
+    <p>Sign in to access your Outlook calendars</p>
+    <button class="btn btn-accent btn-sm" onclick="SH.authenticateGraph()">🔑 Sign In</button>
+  </div>
+
+  <!-- ═══════ STEP 1: UPLOAD ═══════ -->
+  <div class="section" id="uploadSection">
+    <div class="section-label"><span class="num">1</span> Upload Document</div>
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      <div class="uz-icon">📄</div>
+      <h3>Drop a PDF here or click to browse</h3>
+      <p>Court orders, scheduling orders, case management plans</p>
+      <input type="file" id="fileInput" accept="application/pdf">
+      <div class="file-tag" id="fileTag" style="display:none">
+        <span>📎</span>
+        <span id="fileName"></span>
+        <span class="remove-file" onclick="event.stopPropagation(); SH.clearFile()">✕</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ STEP 2: SETTINGS ═══════ -->
+  <div class="section">
+    <div class="section-label"><span class="num">2</span> Settings</div>
+    <div class="settings-card">
+      <div class="setting-row">
+        <label>Reference Date</label>
+        <input type="date" id="refDate">
+      </div>
+      <div class="setting-row" style="flex-wrap:wrap;">
+        <label>Title Format</label>
+        <select id="titleFormat" onchange="SH.onTitleFormatChange()">
+          <option value="plaintiff">Plaintiff – Event</option>
+          <option value="pvd">Plaintiff/Defendant – Event</option>
+          <option value="pvd_order">Plaintiff/Def – Event Per Order Date</option>
+          <option value="casenum">Case Number – Event</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <div class="format-preview" id="titlePreview">Smith – Pretrial Conference</div>
+        <div class="custom-format-input" id="customFormatWrap">
+          <input type="text" id="customFormatInput" placeholder="{plaintiff}/{defendant} - {event}" oninput="SH.updateTitlePreview()">
+          <div class="token-chips">
+            <span class="token-chip" onclick="SH.insertToken('{plaintiff}')">{plaintiff}</span>
+            <span class="token-chip" onclick="SH.insertToken('{defendant}')">{defendant}</span>
+            <span class="token-chip" onclick="SH.insertToken('{event}')">{event}</span>
+            <span class="token-chip" onclick="SH.insertToken('{casenum}')">{casenum}</span>
+            <span class="token-chip" onclick="SH.insertToken('{order}')">{order}</span>
+            <span class="token-chip" onclick="SH.insertToken('{orderdate}')">{orderdate}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ STEP 3: CALENDAR ═══════ -->
+  <div class="section">
+    <div class="section-label"><span class="num">3</span> Calendar</div>
+    <div class="settings-card">
+      <div class="cal-list" id="calendarList">
+        <span style="color:var(--text-tertiary);font-style:italic;font-size:12px;">Loading calendars…</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ EXTRACT BUTTON ═══════ -->
+  <div class="btn-row">
+    <button class="btn btn-accent" id="extractBtn" onclick="SH.startExtraction()" disabled>
+      🔍 Extract Deadlines
+    </button>
+  </div>
+
+  <!-- ═══════ STATUS / ERROR ═══════ -->
+  <div class="status-bar" id="statusBar">
+    <div class="spinner"></div>
+    <span class="status-text" id="statusText">Analyzing document…</span>
+  </div>
+  <div class="error-banner" id="errorBanner"></div>
+
+  <!-- ═══════ ICS FALLBACK INFO ═══════ -->
+  <div class="ics-fallback" id="icsFallback">
+    ℹ️ Calendar API unavailable. Events will be downloaded as <strong>.ics files</strong> you can open to import into any calendar app.
+  </div>
+
+  <!-- ═══════ CASE BANNER ═══════ -->
+  <div class="case-banner" id="caseBanner">
+    <h3 id="caseName"></h3>
+    <div class="case-meta">
+      <span>🏛️ <span id="courtName"></span></span>
+      <span>📁 #<span id="caseNumber"></span></span>
+    </div>
+    <div class="case-meta" style="margin-top:4px;">
+      <span>👤 Plaintiff: <strong id="plaintiffName"></strong></span>
+      <span>👤 Defendant: <strong id="defendantName"></strong></span>
+    </div>
+    <div class="case-meta" style="margin-top:4px;">
+      <span>📜 <em id="orderSource"></em></span>
+    </div>
+  </div>
+
+  <!-- ═══════ DEADLINES ═══════ -->
+  <div class="deadlines-section" id="deadlinesSection">
+    <div class="deadlines-header"><h2>Extracted Deadlines</h2></div>
+    <p class="deadlines-subtitle" id="deadlinesSubtitle"></p>
+    <div class="toolbar" id="toolbar">
+      <button class="btn btn-ghost btn-xs" onclick="SH.toggleSelectAll()">☑ Select All</button>
+      <button class="btn btn-success btn-xs" id="approveSelectedBtn" onclick="SH.approveSelected()" disabled>✅ Approve Selected</button>
+      <button class="btn btn-danger-ghost btn-xs" onclick="SH.skipSelected()">Skip Selected</button>
+      <span class="spacer"></span>
+      <span class="select-info" id="selectInfo">0 selected</span>
+      <span class="expand-toggle" id="expandToggle" onclick="SH.toggleExpandAll()">
+        <span id="expandIcon">▼</span> <span id="expandLabel">Expand All</span>
+      </span>
+    </div>
+    <div id="deadlinesContainer"></div>
+  </div>
+
+  <!-- ═══════ SUMMARY ═══════ -->
+  <div class="summary-banner" id="summary">
+    <h3>✅ All Done!</h3>
+    <p id="summaryText"></p>
+  </div>
+
+  <!-- ═══════ DISCLAIMER ═══════ -->
+  <div class="disclaimer">
+    ⚠️ <strong>Disclaimer:</strong> Deadlines are extracted by AI and may contain errors.
+    Always verify against the original court document. Not legal advice.
+  </div>
+</div>
+
+<script src="taskpane.js"></script>
+</body>
+</html>
